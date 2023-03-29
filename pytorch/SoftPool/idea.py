@@ -47,7 +47,7 @@ class CUDA_SOFTPOOL1d(Function):
 class CUDA_SOFTPOOL2d(Function):
     @staticmethod
     @torch.cuda.amp.custom_fwd(cast_inputs=torch.float32)
-    def forward(ctx, input, kernel=2, stride=None):
+    def forward(ctx, input, kernel=2, stride=None, padding=0):
         # Create contiguous tensor (if tensor is not contiguous)
         no_batch = False
         if len(input.size()) == 3:
@@ -59,8 +59,8 @@ class CUDA_SOFTPOOL2d(Function):
             stride = kernel
         else:
             stride = _pair(stride)
-        oH = (H - kernel[0]) // stride[0] + 1
-        oW = (W - kernel[1]) // stride[1] + 1
+        oH = (H - kernel[0] + 2 * padding) // stride[0] + 1
+        oW = (W - kernel[1] + 2 * padding) // stride[1] + 1
         output = input.new_zeros((B, C, oH, oW))
         softpool_cuda.forward_2d(input.contiguous(), kernel, stride, output)
         ctx.save_for_backward(input)
@@ -185,9 +185,9 @@ def soft_pool1d(x, kernel_size=2, stride=None, force_inplace=False):
     [Returns]
         - PyTorch Tensor, subsampled based on the specified `kernel_size` and `stride`
 '''
-def soft_pool2d(x, kernel_size=2, stride=None, force_inplace=False):
+def soft_pool2d(x, kernel_size=2, stride=None, padding=0, force_inplace=False):
     if x.is_cuda and not force_inplace:
-        x = CUDA_SOFTPOOL2d.apply(x, kernel_size, stride)
+        x = CUDA_SOFTPOOL2d.apply(x, kernel_size, stride, padding)
         # Replace `NaN's if found
         if torch.isnan(x).any():
             return torch.nan_to_num(x)
@@ -204,7 +204,7 @@ def soft_pool2d(x, kernel_size=2, stride=None, force_inplace=False):
     e_x = torch.clamp(e_x , float(0), float('inf'))
     # Apply mask to input and pool and calculate the exponential sum
     # Tensor: [b x c x d] -> [b x c x d']
-    x = F.avg_pool2d(x.mul(e_x), kernel_size, stride=stride).mul_(sum(kernel_size)).div_(F.avg_pool2d(e_x, kernel_size, stride=stride).mul_(sum(kernel_size)))
+    x = F.avg_pool2d(x.mul(e_x), kernel_size, stride=stride, padding=padding).mul_(sum(kernel_size)).div_(F.avg_pool2d(e_x, kernel_size, stride=stride, padding=padding).mul_(sum(kernel_size)))
     return torch.clamp(x , float(0), float('inf'))
 '''
 ---  E N D  O F  F U N C T I O N  S O F T _ P O O L 2 D  ---
@@ -268,14 +268,15 @@ class SoftPool1d(torch.nn.Module):
 
 
 class SoftPool2d(torch.nn.Module):
-    def __init__(self, kernel_size=2, stride=None, force_inplace=False):
+    def __init__(self, kernel_size=2, stride=None, padding=0, force_inplace=False):
         super(SoftPool2d, self).__init__()
         self.kernel_size = kernel_size
         self.stride = stride
         self.force_inplace = force_inplace
+        self.padding = padding
 
     def forward(self, x):
-        return soft_pool2d(x, kernel_size=self.kernel_size, stride=self.stride, force_inplace=self.force_inplace)
+        return soft_pool2d(x, kernel_size=self.kernel_size, stride=self.stride, padding=self.padding, force_inplace=self.force_inplace)
 
 
 
