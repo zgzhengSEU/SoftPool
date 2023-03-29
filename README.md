@@ -44,7 +44,7 @@ All parts of the code assume that `torch` is of version 1.4 or higher. There mig
 
 You can build the repo through the following commands:
 ```
-$ git clone https://github.com/alexandrosstergiou/SoftPool.git
+$ git clone https://github.com/zgzhengSEU/SoftPool.git
 $ cd SoftPool-master/pytorch
 $ make install
 --- (optional) ---
